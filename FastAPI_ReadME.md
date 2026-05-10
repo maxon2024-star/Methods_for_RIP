@@ -68,28 +68,6 @@ pip freeze > requirements.txt
 
 Создайте следующую структуру папок и файлов:
 
-```text
-my_project/
-├── main.py                # Точка входа в приложение (инициализация FastAPI)
-├── requirements.txt       # Список зависимостей
-├── core/                  # Настройки приложения (конфиги, переменные окружения)
-│   └── config.py
-├── api/                   # Роутеры (Контроллеры)
-│   └── handlers.py
-├── data/                  # Моковые данные (пока нет БД, наши "Модели")
-│   └── collections.py
-├── static/                # Статические файлы (отдаются "как есть")
-│   ├── css/
-│   │   └── style.css
-│   └── img/
-└── templates/             # HTML Шаблоны (обрабатываются шаблонизатором Jinja2)
-    ├── base.html
-    ├── index.html
-    ├── service.html
-    └── order.html
-
-```
-
 ![дерево проекта](image-1.png)
 
 ## 3. Развертывание Minio (Docker Compose и объектное хранилище)
