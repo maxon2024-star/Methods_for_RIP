@@ -22,19 +22,22 @@
 
 Рекомендуется использовать виртуальное окружение, чтобы зависимости проекта не конфликтовали с глобальными пакетами операционной системы.
 
-В терминале перейдите в папку будущего проекта и выполните:
+Откройте терминал, перейдите в папку будущего проекта и выполните команды:
 
 ```bash
-# Создание виртуального окружения (Windows)
-python -m venv venv # вместо venv подставьте тематическое название своей виртуальной среды
-# Активация (Windows)
-venv\Scripts\activate
+# Создание виртуального окружения. 
+# Вместо 'my_hotel_webapp' вы можете использовать любое свое название по теме проекта
+python -m venv my_hotel_webapp
 ```
 
 ```bash
-# Для macOS/Linux:
-python3 -m venv venv
-source venv/bin/activate
+# Активация виртуального окружения (для Windows):
+my_hotel_webapp\Scripts\activate
+```
+
+```bash
+# Активация виртуального окружения (для macOS/Linux):
+source my_hotel_webapp/bin/activate
 ```
 
 Установим основные пакеты. В первой лабораторной мы не используем базу данных, но сразу подготовим стек (установим алхимию и алембик на будущее):
@@ -44,8 +47,16 @@ pip install fastapi uvicorn jinja2 python-multipart
 pip install sqlalchemy alembic
 ```
 
-*(Место для скриншота: Успешная установка пакетов в терминале)*
+![Установка пакетов](image.png)
 
+**Создание файла requirements.txt**
+Чтобы Docker в будущем мог установить те же самые библиотеки при сборке контейнера, нам нужно зафиксировать их в текстовый файл. Выполните команду сохранения зависимостей:
+
+```bash
+pip freeze > requirements.txt
+```
+
+После этого в корне проекта появится файл `requirements.txt` со списком всех установленных библиотек и их точными версиями.
 
 ## 2. Структура проекта (Архитектура)
 
@@ -79,7 +90,7 @@ my_project/
 
 ```
 
-*(Место для скриншота: Дерево проекта в левой панели VS Code)*
+![дерево проекта](image-1.png)
 
 ## 3. Развертывание Minio (Docker Compose и объектное хранилище)
 
@@ -87,17 +98,53 @@ my_project/
 В классических веб-приложениях файлы часто хранили прямо в папке с кодом (на жестком диске сервера). Это создавало проблемы: сервер переполнялся, а при запуске нескольких копий приложения файлы рассинхронизировались.
 Современный подход — использование **Объектных хранилищ (Object Storage)**, таких как Amazon S3. В них файлы хранятся не в виде иерархии папок, а как объекты с уникальными идентификаторами (ключами) и метаданными. **Minio** — это S3-совместимое хранилище, которое можно развернуть локально. Оно идеально подходит для отдачи «тяжелых» медиафайлов: изображений, видео, бэкапов.
 
-**Использование Docker Compose**
-Вместо того чтобы вводить длинные команды в терминал, мы опишем нашу инфраструктуру в виде кода. Это позволит запускать базу данных, кеш и хранилище одной командой.
+Вместо того чтобы запускать всё вручную, мы используем **Docker Compose**, который поднимет и наше приложение, и S3-хранилище Minio одной командой.
 
-Создайте в корне вашего проекта файл `docker-compose.yml`:
+Создайте файл `Dockerfile` для сборки нашего FastAPI:
+
+```dockerfile
+# Используем легковесный образ Python 3.10
+FROM python:3.10-slim
+
+# Устанавливаем рабочую директорию внутри контейнера
+WORKDIR /app
+
+# Копируем файл зависимостей и устанавливаем их
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Копируем весь остальной код проекта
+COPY . .
+
+# Открываем порт 8000 для uvicorn
+EXPOSE 8000
+
+# Команда для запуска FastAPI сервера
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+```
+
+Создайте `docker-compose.yml` в корне проекта:
 
 ```yaml
-version: '3.8'
-
 services:
+  # Наш FastAPI бэкенд
+  web:
+    build: .
+    container_name: fastapi_app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - minio
+    # Монтируем текущую папку внутрь контейнера, чтобы код обновлялся без пересборки образа
+    volumes:
+      - .:/app
+    # Запускаем с флагом --reload для разработки
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  # Объектное хранилище Minio
   minio:
-    container_name: minio
+    container_name: minio_fastapi
     image: minio/minio:latest
     ports:
       - "9000:9000"
@@ -112,43 +159,43 @@ services:
 
 volumes:
   minio-data:
+
 ```
 
-### Запуск инфраструктуры на разных платформах
+### Запуск и настройка инфраструктуры
 
-Команды управления `docker-compose` универсальны, но подготовка среды немного отличается в зависимости от вашей ОС:
+1. Соберите и запустите проект в фоновом режиме(для отладки необходимо убрать `-d` флаг):
 
-* **Windows и macOS:** Вам потребуется установить **[Docker Desktop](https://www.docker.com/products/docker-desktop/)**. После установки и запуска программы, откройте терминал (в VS Code или PowerShell/Terminal) в папке с вашим `docker-compose.yml`.
-* **Linux (Ubuntu/Debian):** Необходимо установить Docker Engine и плагин Compose через менеджер пакетов (`sudo apt install docker-ce docker-compose-plugin`).
-
-**Команды для работы и настройки Minio Client (`mc`):**
-
-1. **Запуск хранилища:**
-В терминале, находясь в папке с файлом `docker-compose.yml`, выполните команду:
     ```bash
-    docker compose up -d
+    docker compose up --build -d
+
     ```
-    Флаг `-d` (detached) запускает контейнер в фоновом режиме.
+    Теперь наше приложение будет автоматически развернуто внутри контейнера Докера, отдельно запускать `main.py` не придется:
+    ![запущенное приложение](image-4.png)
+>**NB!** Обратите внимание: сначала надо написать весь код проекта, потом уже запускать контейнер, иначе вы не запустите сервер -- только пространство MinIO будет доступно по ранее заданному порту
 
 2. **Настройка публичного доступа через Minio Client (`mc`):**
+По умолчанию корзины (бакеты) в Minio приватны. Выполните эти команды по очереди, чтобы создать бакет и сделать его публичным:
 
-    По умолчанию созданные корзины (бакеты) приватны. Чтобы изображения из Minio были доступны на нашем сайте без авторизации, необходимо сделать бакет публичным. Мы сделаем это прямо через встроенный в контейнер клиент `mc`. Выполните следующие команды по очереди:
-* Подключаем клиента к нашему серверу (используя логин и пароль из конфига):
     ```bash
-    docker exec -it minio mc alias set myminio http://localhost:9000 root rootpassword
+    # Подключаем клиента к серверу Minio. 
+    docker exec -it minio_fastapi mc alias set myminio http://localhost:9000 root rootpassword
     ```
 
-* Создаем бакет с названием `media`:
     ```bash
-    docker exec -it minio mc mb myminio/media
-
+    # Создаем бакет. 'media' вы можете заменить на название вашей темы (например, 'hotel-assets', 'images')
+    docker exec -it minio_fastapi mc mb myminio/media
     ```
 
-
-* Устанавливаем политику доступа `public` (публичная видимость на чтение):
     ```bash
-    docker exec -it minio mc anonymous set public myminio/media
+    # Делаем бакет публичным для чтения. Обязательно замените 'media', если на предыдущем шаге выбрали другое имя!
+    docker exec -it minio_fastapi mc anonymous set public myminio/media
     ```
+
+3. **Загрузка файлов:**
+Зайдите по адресу `http://localhost:9001` (логин `root`, пароль `rootpassword`), перейдите в бакет `media` (или тот, который вы создали) и загрузите туда изображения и видео для услуг. Ссылки на них будут выглядеть так: `http://localhost:9000/media/ваша_картинка.jpg`.
+
+![команды](image-2.png)
 
 3. **Проверка работы и загрузка файлов:**
 * Перейдите в веб-интерфейс Minio: `http://localhost:9001`
@@ -163,7 +210,7 @@ volumes:
 
 
 
-*(Место для скриншота: Интерфейс Minio с загруженными файлами в бакете media)*
+![медиа](image-3.png)
 
 
 ## 4. Создание первого приложения на FastAPI
@@ -194,14 +241,6 @@ if __name__ == "__main__":
 
 ```
 
-Запускаем проект:
-
-```bash
-python main.py
-```
-
-*(Место для скриншота: Запуск uvicorn в терминале, сообщение "Application startup complete")*
-
 
 ## 5. Шаблонизация с Jinja2 и подключение статики
 
@@ -217,7 +256,7 @@ python main.py
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Главная{% end block %}</title>
+    <title>{% block title %}Главная{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', path='css/style.css') }}">
 </head>
 <body>
@@ -232,11 +271,10 @@ python main.py
 
     <main>
         {% block content %}
-        {% end block %}
+        {% endblock %}
     </main>
 </body>
 </html>
-
 ```
 
 ### Написание CSS
@@ -362,13 +400,16 @@ def list_services(
             if query.lower() in s["title"].lower()
         ]
 
-    return templates.TemplateResponse("index.html", {
-        "request": request,
-        "services": filtered_services,
-        "query": query or "",
-        "order_id": current_order_id,
-        "order_items_count": len(order["items"])
-    })
+    return templates.TemplateResponse(
+        request=request,
+        name="index.html", 
+        context={
+            "services": filtered_services,
+            "query": query or "",
+            "order_id": current_order_id,
+            "order_items_count": len(order["items"])
+        }
+    )
 
 @router.get("/service/{service_id}")
 def get_service_detail(
@@ -382,12 +423,15 @@ def get_service_detail(
     # Ищем конкретную услугу по ID
     service = next((s for s in services_db if s["id"] == service_id), None)
     
-    return templates.TemplateResponse("service.html", {
-        "request": request,
-        "service": service,
-        "order_id": current_order_id,
-        "order_items_count": len(order["items"])
-    })
+    return templates.TemplateResponse(
+        request=request,
+        name="service.html", 
+        context={
+            "service": service,
+            "order_id": current_order_id,
+            "order_items_count": len(order["items"])
+        }
+    )
 
 @router.get("/order/{order_id}")
 def get_order_detail(request: Request, order_id: str):
@@ -396,14 +440,16 @@ def get_order_detail(request: Request, order_id: str):
     # Динамическое вычисление итоговой цены (Бизнес-логика)
     total_price = sum(item["price"] for item in order["items"]) if order else 0
     
-    return templates.TemplateResponse("order.html", {
-        "request": request,
-        "order": order,
-        "order_id": order_id,
-        "order_items_count": len(order["items"]) if order else 0,
-        "total_price": total_price
-    })
-
+    return templates.TemplateResponse(
+        request=request,
+        name="order.html", 
+        context={
+            "order": order,
+            "order_id": order_id,
+            "order_items_count": len(order["items"]) if order else 0,
+            "total_price": total_price
+        }
+    )
 ```
 
 ### Шаблоны страниц
@@ -433,17 +479,18 @@ def get_order_detail(request: Request, order_id: str):
         </a>
         {% else %}
             <p>По вашему запросу ничего не найдено.</p>
-        {% end for %}
+        {% endfor %}
     </div>
-{% end block %}
-
+{% endblock %}
 ```
+Главная страница теперь имеет вид:
+![Главная](image-5.png)
 
-*(Место для скриншота: Главная страница с плиткой товаров и заполненным полем поиска)*
-*(Место для скриншота: Открытая вкладка Network (F12), показывающая GET запрос вида `/?query=Отель`)*
+При выполнении поиска у вас будет отображен GET запрос на вкладке Network в меню разработчика (F12 для перехода)
+![Поиск](image-6.png)
 
 **Страница 2:** `templates/service.html`
-
+>**NB!:** У вас страница подробнее с помощью CSS стилей должна быть отображена в формате wibes WB(видео формата 9:16 с наложенным текстом подробнее об услуге и дополнительной информации по теме)
 ```html
 {% extends "base.html" %}
 
@@ -463,9 +510,9 @@ def get_order_detail(request: Request, order_id: str):
         
         <p class="desc" style="margin-top: 20px;">{{ service.description }}</p>
     </div>
-{% end block %}
-
+{% endblock %}
 ```
+![Страница подробнее](image-7.png)
 
 **Страница 3:** `templates/order.html`
 
@@ -480,7 +527,7 @@ def get_order_detail(request: Request, order_id: str):
         <hr>
         
         <div class="order-items-list">
-            {% for item in order.items %}
+            {% for item in order['items'] %}
             <div class="order-item-row" style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #eee;">
                 <span class="item-title" style="flex: 2;">{{ item.title }}</span>
                 <span class="item-date" style="flex: 1;">{{ item.date }}</span>
@@ -488,18 +535,17 @@ def get_order_detail(request: Request, order_id: str):
                 
                 <input type="text" class="mm-field" placeholder="Комментарий к услуге" disabled style="flex: 2; margin-left: 10px;">
             </div>
-            {% end for %}
+            {% endfor %}
         </div>
 
         <div class="total-calc" style="text-align: right; margin-top: 20px;">
             <h3>Итого к оплате: {{ total_price }} руб.</h3>
         </div>
     </div>
-{% end block %}
-
+{% endblock %}
 ```
-
-*(Место для скриншота: Страница корзины, где услуги выведены списком друг под другом в строку)*
+Страница корзины:
+![Корзина](image-8.png)
 
 ---
 
