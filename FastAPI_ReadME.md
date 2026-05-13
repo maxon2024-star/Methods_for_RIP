@@ -7,16 +7,17 @@
 
 ## План работы
 
-1. Подготовка окружения и немного теории
-2. Структура проекта (Архитектура)
-3. Развертывание Minio (через Minio Client)
-4. Создание первого приложения на FastAPI
-5. Шаблонизация с Jinja2 и подключение статики
-6. Реализация коллекций данных и логики (Роутинг, Поиск, Куки)
-7. FAQ
+1. Подготовка окружения
+2. Структура проекта
+3. Первая программа
+4. Шаблонизация с Jinja2
+5. Коллекции данных (Массивы)
+6. Роутинг и страница «Подробнее» (формат Reels/TikTok)
+7. Подключение статики (CSS и медиа)
+8. Работа с MinIO (Объектное хранилище)
+9. FAQ
 
-
-## 1. Подготовка окружения и немного теории
+## 1. Подготовка окружения
 
 **FastAPI** — это современный, быстрый (высокопроизводительный) веб-фреймворк для создания API на Python 3.7+, в основе которого лежат стандартные аннотации типов Python. В отличие от Django или Flask, FastAPI изначально построен на асинхронной архитектуре (ASGI), что позволяет ему обрабатывать огромное количество запросов одновременно, соревнуясь в скорости с Node.js и Go.
 
@@ -68,9 +69,395 @@ pip freeze > requirements.txt
 
 Создайте следующую структуру папок и файлов:
 
-![дерево проекта](image-1.png)
+![дерево проекта](image-9.png)
 
-## 3. Развертывание Minio (Docker Compose и объектное хранилище)
+## 3. Первая программа
+
+Файл `main.py` должен содержать минимум логики — это точка сборки приложения. Напишем базовый код для запуска сервера.
+
+Откройте `main.py` и добавьте:
+
+```python
+from fastapi import FastAPI
+import uvicorn
+
+app = FastAPI(title="Hotel Catalog App")
+
+@app.get("/")
+def read_root():
+    return {"message": "Hello, FastAPI Web Application!"}
+
+if __name__ == "__main__":
+    # Запуск сервера. reload=True автоматически перезапускает сервер при изменении кода
+    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+```
+
+Запустите программу из терминала:
+
+```bash
+python main.py
+```
+
+Откройте браузер и перейдите по адресу `http://127.0.0.1:8000`. Вы должны увидеть JSON-ответ:
+`{"message": "Hello, FastAPI Web Application!"}`
+
+![Hello](image-10.png)
+
+## 4. Шаблонизация с Jinja2
+
+JSON — это формат для передачи данных (API), но нам нужно отдавать пользователю красивые веб-страницы. Для этого используется шаблонизатор Jinja2.
+
+Создадим базовый HTML-шаблон. В папке `templates` создайте файл `index.html`:
+
+```html
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Каталог</title>
+</head>
+<body>
+    <h1>Каталог отелей</h1>
+    <p>Добро пожаловать в наше приложение!</p>
+</body>
+</html>
+```
+
+Теперь обновим логику, чтобы отдавать этот файл. Создадим контроллер в `api/handlers.py`:
+
+```python
+from fastapi import APIRouter, Request
+from fastapi.templating import Jinja2Templates
+
+router = APIRouter()
+# Указываем, где искать HTML файлы
+templates = Jinja2Templates(directory="templates")
+
+@router.get("/")
+def get_catalog(request: Request):
+    # Возвращаем скомпилированный HTML шаблон
+    return templates.TemplateResponse("index.html", {"request": request})
+```
+
+В `main.py` необходимо подключить этот роутер:
+
+```python
+from fastapi import FastAPI
+import uvicorn
+from api.handlers import router
+
+app = FastAPI(title="Hotel Catalog App")
+
+# Подключаем наши роуты
+app.include_router(router)
+
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+```
+
+Перезагрузите страницу в браузере. Вы увидите отображение чистого HTML (пока без стилей).
+![Чистый HTML](image-11.png)
+
+
+## 5. Коллекции данных (Массивы)
+
+Пока мы не подключили реальную БД, будем использовать списки словарей. Изображения положим в папку static/img 
+
+В файле `data/collections.py` создадим массив:
+
+```python
+hotels_db = [
+    {
+        "id": 1,
+        "title": "Отель 'Морской бриз'",
+        "price": 5000,
+        "description": "Прекрасный отель на берегу моря с панорамными окнами и включенным завтраком. Отличный выбор для отдыха.",
+        "image_url": "/static/img/hotel.jpg",
+        "video_url": "/static/img/hotel_vid.mp4"
+    },
+    {
+        "id": 2,
+        "title": "Отель 'Горная вершина'",
+        "price": 3500,
+        "description": "Уютное шале в горах. Идеально подходит для любителей зимних видов спорта и активного отдыха.",
+        "image_url": "/static/img/mountains.jpg",
+        "video_url": "/static/img/mountains.mp4"
+    },
+]
+```
+
+Передадим эти данные в шаблон. Изменим `api/handlers.py`:
+
+```python
+from fastapi import APIRouter, Request
+from fastapi.templating import Jinja2Templates
+from data.collections import hotels_db
+
+router = APIRouter()
+templates = Jinja2Templates(directory="templates")
+
+@router.get("/")
+def get_catalog(request: Request):
+    # Добавляем context явно
+    return templates.TemplateResponse(
+        request=request,
+        name="index.html", 
+        context={"hotels": hotels_db}
+    )
+
+```
+
+Обновим `templates/index.html`, добавив цикл `{% for %}`:
+
+```html
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Каталог</title>
+</head>
+<body>
+    <h1>Каталог отелей</h1>
+    
+    <ul>
+        {% for hotel in hotels %}
+        <li>
+            <h2>{{ hotel.title }}</h2>
+            <p>Цена: {{ hotel.price }} руб.</p>
+        </li>
+        {% endfor %}
+    </ul>
+</body>
+</html>
+```
+
+Обновите страницу. Вы увидите списочный вывод данных из вашего Python-массива.
+![Массив](image-12.png)
+
+
+## 6. Роутинг и страница «Подробнее» (формат Reels/TikTok)
+
+Теперь сделаем так, чтобы по клику на отель открывалась подробная страница в популярном вертикальном формате с зацикленным видео (9:16).
+
+Добавим новый путь в `api/handlers.py`. Для этого используем Path-параметр `hotel_id`:
+
+```python
+#код необходимо ДОБАВИТЬ к существующим маршрутам в файле
+@router.get("/hotel/{hotel_id}")
+def get_hotel_detail(request: Request, hotel_id: int):
+    hotel = next((h for h in hotels_db if h["id"] == hotel_id), None)
+    
+    return templates.TemplateResponse(
+        request=request,
+        name="hotel.html", 
+        context={"hotel": hotel}
+    )
+```
+
+Создадим шаблон `templates/hotel.html` со следующей структурой:
+
+```html
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ hotel.title }}</title>
+</head>
+<body class="detail-page-body">
+    
+    <header class="detail-header">
+        <a href="/" class="home-link">Hotel Catalog App</a>
+    </header>
+
+    <main class="video-layout">
+        <div class="tiktok-container">
+            <video autoplay loop muted playsinline>
+                <source src="{{ hotel.video_url }}" type="video/mp4">
+            </video>
+            
+            <div class="description-overlay">
+                <strong>{{ hotel.title }}</strong><br>
+                {{ hotel.description }}
+            </div>
+        </div>
+    </main>
+    
+</body>
+</html>
+```
+
+Добавим ссылки в цикл for `index.html`, чтобы карточки вели на детальную страницу:
+
+```html
+{% for hotel in hotels %}
+    <li>
+        <a href="/hotel/{{ hotel.id }}">
+            <h2>{{ hotel.title }}</h2>
+        </a>
+        <p>Цена: {{ hotel.price }} руб.</p>
+    </li>
+{% endfor %}
+
+```
+Теперь главная страница выглядит так:
+![Новая главная](image-13.png)
+
+И появляется страница подробнее об услуге:
+![Подробнее начальная версия](image-14.png)
+
+
+## 7. Подключение статики (CSS)
+
+Чтобы интерфейс стал опрятным, подключим каскадные таблицы стилей.
+
+В `main.py` укажем FastAPI, где брать статику:
+
+```python
+from fastapi.staticfiles import StaticFiles
+
+# Добавить перед app.include_router(router)
+app.mount("/static", StaticFiles(directory="static"), name="static")
+```
+
+Подключим CSS в `head` файла `index.html` и `hotel.html`:
+
+```html
+<link rel="stylesheet" href="/static/css/style.css">
+```
+
+Создайте `static/css/style.css`. В дизайне использована свежая палитра: бледно-голубой фон для легкости чтения и яркий цвет «электрик» для интерактивных элементов:
+
+```css
+/* Базовые стили каталога */
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f0f8ff; /* Бледно-голубой фон */
+    color: #333;
+    margin: 0;
+    padding: 20px;
+}
+
+h1 {
+    color: #005df9; /* Электрический синий */
+}
+
+ul {
+    list-style: none;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 20px;
+}
+
+li {
+    background: #ffffff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    transition: transform 0.2s ease;
+}
+
+li:hover {
+    transform: translateY(-5px);
+}
+
+a {
+    text-decoration: none;
+    color: #005df9;
+}
+
+/* Стили для страницы Подробнее (формат Reels/TikTok) */
+.detail-page-body {
+    background-color: #f0f8ff; /* Сохраняем бледно-голубой фон */
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    height: 100vh; /* Занимает всю высоту экрана */
+}
+
+/* Белая шапка-хедер */
+.detail-header {
+    background-color: #ffffff;
+    padding: 15px 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+/* Кнопка "Домой" (Название проекта) */
+.home-link {
+    font-size: 20px;
+    font-weight: bold;
+    color: #005df9; /* Электрический синий */
+    text-decoration: none;
+}
+
+.home-link:hover {
+    text-decoration: underline;
+}
+
+/* Выравнивание плеера по центру оставшегося экрана */
+.video-layout {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+/* Контейнер в виде "смартфона" (TikTok формат) */
+.tiktok-container {
+    position: relative;
+    width: 100%;
+    max-width: 400px; /* Ширина мобильного устройства */
+    aspect-ratio: 9/16;
+    background: #000;
+    border-radius: 20px; /* Скругляем углы самого плеера */
+    box-shadow: 0 15px 35px rgba(0,0,0,0.15); /* Тень, чтобы отделить от фона */
+    overflow: hidden; /* Обрезаем видео, чтобы оно не вылезало за скругления */
+}
+
+.tiktok-container video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover; /* Заполняет экран плеера, обрезая края */
+}
+
+.description-overlay {
+    position: absolute;
+    bottom: 20px;
+    left: 15px;
+    right: 15px;
+    background: rgba(0, 0, 0, 0.45); /* Полупрозрачная подложка */
+    color: #ffffff;
+    padding: 15px;
+    border-radius: 12px;
+    font-size: 14px;
+    line-height: 1.4;
+    
+    /* Ограничение текста в 4 строки с многоточием */
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.hotel-image {
+    width: 100%;             /* Картинка занимает всю ширину карточки */
+    height: 200px;           /* Фиксированная высота */
+    object-fit: cover;       /* Обрезает картинку без искажения пропорций */
+    border-radius: 6px;      /* Слегка скругляем углы */
+    margin-bottom: 10px;
+}
+```
+
+Обновите страницу. Вы увидите аккуратную сетку карточек каталога. 
+![alt text](image-15.png)
+
+При клике на карточку откроется полноэкранный вертикальный блок с зацикленным видео и текстовым слоем поверх него.
+![alt text](image-16.png)
+
+## 8. Развертывание Minio (Docker Compose и объектное хранилище)
 
 **Немного теории: Что такое Minio и зачем оно нам?**
 В классических веб-приложениях файлы часто хранили прямо в папке с кодом (на жестком диске сервера). Это создавало проблемы: сервер переполнялся, а при запуске нескольких копий приложения файлы рассинхронизировались.
@@ -149,35 +536,10 @@ volumes:
     ```
     Теперь наше приложение будет автоматически развернуто внутри контейнера Докера, отдельно запускать `main.py` не придется:
     ![запущенное приложение](image-4.png)
->**NB!** Обратите внимание: сначала надо написать весь код проекта, потом уже запускать контейнер, иначе вы не запустите сервер -- только пространство MinIO будет доступно по ранее заданному порту
+    >**NB!** Обратите внимание: сначала надо написать весь код проекта, потом уже запускать контейнер, иначе вы не запустите сервер -- только пространство MinIO будет доступно по ранее заданному порту
 
 2. **Настройка публичного доступа через Minio Client (`mc`):**
-По умолчанию корзины (бакеты) в Minio приватны. Выполните эти команды по очереди, чтобы создать бакет и сделать его публичным:
-
-    ```bash
-    # Подключаем клиента к серверу Minio(minio_fastapi - название контейнера из docker-compose.yml)
-    docker exec -it minio_fastapi mc alias set myminio http://localhost:9000 root rootpassword
-    ```
-
-    ```bash
-    # Создаем бакет. 'media' вы можете заменить на название вашей темы (например, 'hotel-assets', 'images')
-    docker exec -it minio_fastapi mc mb myminio/media
-    ```
-
-    ```bash
-    # Делаем бакет публичным для чтения. Обязательно замените 'media', если на предыдущем шаге выбрали другое имя!
-    docker exec -it minio_fastapi mc anonymous set public myminio/media
-    ```
-
-3. **Загрузка файлов:**
-Зайдите по адресу `http://localhost:9001` (логин `root`, пароль `rootpassword`), перейдите в бакет `media` (или тот, который вы создали) и загрузите туда изображения и видео для услуг. Ссылки на них будут выглядеть так: `http://localhost:9000/media/ваша_картинка.jpg`.
-
-![команды](image-2.png)
-
-3. **Проверка работы и загрузка файлов:**
-* Перейдите в веб-интерфейс Minio: `http://localhost:9001`
-* Авторизуйтесь (`root` / `rootpassword`).
-* Загрузите картинки в созданный бакет `media` через веб-интерфейс. Теперь они доступны вашему приложению по прямым ссылкам вида: `http://localhost:9000/media/ваша_картинка.jpg`.
+    Подробный гайд описан в [Гайде по настройке бакетов в MinIO](MinIO_bucket_setup_ReadMe.md)
 
 
 4. **Остановка хранилища (при необходимости):**
@@ -185,348 +547,11 @@ volumes:
     docker compose down
     ```
 
-
 Вид хранилища с загружеными изображениями:
 ![медиа](image-3.png)
 
 
-## 4. Создание первого приложения на FastAPI
-
-Файл `main.py` должен содержать минимум логики — это точка сборки нашего приложения. Мы инициализируем экземпляр `FastAPI` и подключаем к нему статику и роутеры.
-
-Откроем `main.py` и напишем:
-
-```python
-from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
-import uvicorn
-from api.handlers import router
-
-app = FastAPI(title="Web Application Lab")
-
-# Подключаем папку со статикой (CSS, шрифты, локальные иконки)
-# Теперь файлы из папки static будут доступны по URL /static/...
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
-# Подключаем наши роуты (контроллеры) из файла handlers.py
-app.include_router(router)
-
-if __name__ == "__main__":
-    # Запуск ASGI-сервера на порту 8000
-    # reload=True позволяет автоматически перезапускать сервер при изменении кода
-    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
-
-```
-
-
-## 5. Шаблонизация с Jinja2 и подключение статики
-
-**Статика vs Динамика:** **Статические файлы** (CSS, JS, логотипы) отдаются сервером в неизменном виде.
-
-* **Шаблоны** (HTML + Jinja2) обрабатываются сервером: в них подставляются переменные, выполняются циклы (`for`) и условия (`if`), и только потом готовый HTML отправляется в браузер клиента.
-
-Создадим базовый шаблон `templates/base.html`, от которого будут наследоваться остальные страницы (принцип DRY - Don't Repeat Yourself).
-
-```html
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Главная{% endblock %}</title>
-    <link rel="stylesheet" href="{{ url_for('static', path='css/style.css') }}">
-</head>
-<body>
-    <header>
-        <a href="/" class="home-btn">Домой</a>
-        <div class="cart-info">
-            <a href="/order/{{ order_id }}">
-                Текущая заявка: {{ order_items_count }} шт.
-            </a>
-        </div>
-    </header>
-
-    <main>
-        {% block content %}
-        {% endblock %}
-    </main>
-</body>
-</html>
-```
-
-### Написание CSS
-
-В файл `static/css/style.css` добавьте стили, скопировав их с выбранного сайта-референса (цвета, hover-эффекты, сетка).
-
-Пример базовой CSS-сетки для карточек:
-
-```css
-body {
-    font-family: Arial, sans-serif;
-    background-color: #f4f4f9; 
-    color: #333;               
-    margin: 0;
-}
-
-header {
-    background-color: #ffffff;
-    padding: 15px 20px;
-    display: flex;
-    justify-content: space-between;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-.services-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr); /* Плитка в 3 столбца */
-    gap: 20px;
-    padding: 20px;
-}
-
-.service-card {
-    background: white;
-    border-radius: 8px;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    transition: transform 0.2s ease-in-out; 
-    cursor: pointer;
-}
-
-.service-card:hover {
-    transform: translateY(-5px);
-}
-
-```
-
-## 6. Реализация коллекций данных и логики (Роутинг, Поиск, Куки)
-
-### Словари и списки данных (вместо БД)
-
-Пока мы не подключили SQLAlchemy, мы используем структуры данных Python (Списки и Словари). Это позволит понять, как данные передаются из контроллера в шаблон.
-
-В файле `data/collections.py`:
-
-```python
-# Коллекция услуг. URL картинок ведут на наш локальный Minio
-services_db = [
-    {
-        "id": 1,
-        "title": "Отель 'Морской бриз'",
-        "price": 5000,
-        "date": "2026-06-15",
-        "description": "Прекрасный отель на берегу моря. Завтрак включен.",
-        "image_url": "http://localhost:9000/media/hotel1.jpg",
-        "video_url": "http://localhost:9000/media/hotel1_video.mp4"
-    },
-    {
-        "id": 2,
-        "title": "Экскурсия в горы",
-        "price": 2500,
-        "date": "2026-06-16",
-        "description": "Дневной поход с гидом. Уровень сложности: средний.",
-        "image_url": "http://localhost:9000/media/mountains.jpg",
-        "video_url": None
-    },
-]
-
-# Словарь заявок
-order_db = {
-    "101": {
-        "id": 101,
-        "user_name": "Иван Иванов",
-        "items": [services_db[0]], # Имитируем, что в корзине уже есть 1 товар
-        "status": "В обработке"
-    }
-}
-
-```
-
-### Контроллеры (Роуты) и Фильтрация
-
-HTTP GET-запрос используется для получения данных. Параметры могут передаваться в пути (Path), например `/service/1`, или в строке запроса (Query), например `/?query=Отель`.
-
-Откройте `api/handlers.py`. Здесь мы считываем Cookie, чтобы идентифицировать пользователя, и реализуем логику фильтрации списка.
-
-```python
-from fastapi import APIRouter, Request, Cookie, Query
-from fastapi.templating import Jinja2Templates
-from typing import Optional
-from data.collections import services_db, order_db
-
-router = APIRouter()
-# Указываем FastAPI, где искать HTML файлы
-templates = Jinja2Templates(directory="templates")
-
-# Вспомогательная функция для получения id корзины из Cookie
-def get_current_order_id(order_cookie: str = None) -> str:
-    return order_cookie if order_cookie else "101"
-
-@router.get("/")
-def list_services(
-    request: Request, 
-    query: Optional[str] = Query(None), # Query-параметр для поиска
-    order_id: Optional[str] = Cookie(None) # Cookie-параметр
-):
-    current_order_id = get_current_order_id(order_id)
-    order = order_db.get(current_order_id, {"items": []})
-    
-    # Реализация фильтрации (поиска)
-    filtered_services = services_db
-    if query:
-        filtered_services = [
-            s for s in services_db 
-            if query.lower() in s["title"].lower()
-        ]
-
-    return templates.TemplateResponse(
-        request=request,
-        name="index.html", 
-        context={
-            "services": filtered_services,
-            "query": query or "",
-            "order_id": current_order_id,
-            "order_items_count": len(order["items"])
-        }
-    )
-
-@router.get("/service/{service_id}")
-def get_service_detail(
-    request: Request, 
-    service_id: int, # Path-параметр
-    order_id: Optional[str] = Cookie(None)
-):
-    current_order_id = get_current_order_id(order_id)
-    order = order_db.get(current_order_id, {"items": []})
-    
-    # Ищем конкретную услугу по ID
-    service = next((s for s in services_db if s["id"] == service_id), None)
-    
-    return templates.TemplateResponse(
-        request=request,
-        name="service.html", 
-        context={
-            "service": service,
-            "order_id": current_order_id,
-            "order_items_count": len(order["items"])
-        }
-    )
-
-@router.get("/order/{order_id}")
-def get_order_detail(request: Request, order_id: str):
-    order = order_db.get(order_id)
-    
-    # Динамическое вычисление итоговой цены (Бизнес-логика)
-    total_price = sum(item["price"] for item in order["items"]) if order else 0
-    
-    return templates.TemplateResponse(
-        request=request,
-        name="order.html", 
-        context={
-            "order": order,
-            "order_id": order_id,
-            "order_items_count": len(order["items"]) if order else 0,
-            "total_price": total_price
-        }
-    )
-```
-
-### Шаблоны страниц
-
-**Страница 1:** `templates/index.html`
-
-```html
-{% extends "base.html" %}
-
-{% block content %}
-    <form action="/" method="GET" class="search-form">
-        <input type="text" name="query" placeholder="Поиск услуг..." value="{{ query }}">
-        <button type="submit">Найти</button>
-    </form>
-
-    <div class="services-grid">
-        {% for service in services %}
-        <a href="/service/{{ service.id }}" class="card-link" style="text-decoration: none; color: inherit;">
-            <div class="service-card">
-                <img src="{{ service.image_url }}" alt="{{ service.title }}" style="width: 100%; border-radius: 8px 8px 0 0;">
-                <div style="padding: 15px;">
-                    <h3>{{ service.title }}</h3>
-                    <p>Цена: {{ service.price }} руб.</p>
-                    <p>Дата: {{ service.date }}</p>
-                </div>
-            </div>
-        </a>
-        {% else %}
-            <p>По вашему запросу ничего не найдено.</p>
-        {% endfor %}
-    </div>
-{% endblock %}
-```
-Главная страница теперь имеет вид:
-![Главная](image-5.png)
-
-При выполнении поиска у вас будет отображен GET запрос на вкладке Network в меню разработчика (F12 для перехода)
-![Поиск](image-6.png)
-
-**Страница 2:** `templates/service.html`
->**NB!:** У вас страница подробнее с помощью CSS стилей должна быть отображена в формате wibes WB(видео формата 9:16 с наложенным текстом подробнее об услуге и дополнительной информации по теме)
-```html
-{% extends "base.html" %}
-
-{% block content %}
-    <div class="service-detail-portrait" style="max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px;">
-        <h1>{{ service.title }}</h1>
-        <p class="price"><strong>{{ service.price }} руб.</strong></p>
-        
-        {% if service.video_url %}
-        <video width="100%" autoplay loop muted>
-            <source src="{{ service.video_url }}" type="video/mp4">
-            Ваш браузер не поддерживает видео.
-        </video>
-        {% else %}
-        <img src="{{ service.image_url }}" width="100%">
-        {% endif %}
-        
-        <p class="desc" style="margin-top: 20px;">{{ service.description }}</p>
-    </div>
-{% endblock %}
-```
-![Страница подробнее](image-7.png)
-
-**Страница 3:** `templates/order.html`
-
-```html
-{% extends "base.html" %}
-
-{% block content %}
-    <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px;">
-        <h2>Заявка № {{ order.id }}</h2>
-        <p>Клиент: {{ order.user_name }}</p>
-        <p>Статус: {{ order.status }}</p>
-        <hr>
-        
-        <div class="order-items-list">
-            {% for item in order['items'] %}
-            <div class="order-item-row" style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #eee;">
-                <span class="item-title" style="flex: 2;">{{ item.title }}</span>
-                <span class="item-date" style="flex: 1;">{{ item.date }}</span>
-                <span class="item-price" style="flex: 1;">{{ item.price }} руб.</span>
-                
-                <input type="text" class="mm-field" placeholder="Комментарий к услуге" disabled style="flex: 2; margin-left: 10px;">
-            </div>
-            {% endfor %}
-        </div>
-
-        <div class="total-calc" style="text-align: right; margin-top: 20px;">
-            <h3>Итого к оплате: {{ total_price }} руб.</h3>
-        </div>
-    </div>
-{% endblock %}
-```
-Страница корзины:
-![Корзина](image-8.png)
-
----
-
-## 7. FAQ
+## 9. FAQ
 
 **Где изучить больше по FastAPI?**
 Существует прекрасная официальная документация по фреймворку: [https://fastapi.tiangolo.com/](https://www.google.com/search?q=https://fastapi.tiangolo.com/)
