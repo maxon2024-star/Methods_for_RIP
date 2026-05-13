@@ -44,11 +44,11 @@ source my_hotel_webapp/bin/activate
 Установим основные пакеты. В первой лабораторной мы не используем базу данных, но сразу подготовим стек (установим алхимию и алембик на будущее):
 
 ```bash
-pip install fastapi uvicorn jinja2 python-multipart
+pip install fastapi uvicorn jinja2 python-multipart aiofiles
 pip install sqlalchemy alembic
 ```
 
-![Установка пакетов](image.png)
+![Установка пакетов](/assets_new_guides/image.png)
 
 **Создание файла requirements.txt**
 Чтобы Docker в будущем мог установить те же самые библиотеки при сборке контейнера, нам нужно зафиксировать их в текстовый файл. Выполните команду сохранения зависимостей:
@@ -69,7 +69,7 @@ pip freeze > requirements.txt
 
 Создайте следующую структуру папок и файлов:
 
-![дерево проекта](image-9.png)
+![дерево проекта](/assets_new_guides/image-9.png)
 
 ## 3. Первая программа
 
@@ -101,7 +101,7 @@ python main.py
 Откройте браузер и перейдите по адресу `http://127.0.0.1:8000`. Вы должны увидеть JSON-ответ:
 `{"message": "Hello, FastAPI Web Application!"}`
 
-![Hello](image-10.png)
+![Hello](/assets_new_guides/image-10.png)
 
 ## 4. Шаблонизация с Jinja2
 
@@ -136,7 +136,7 @@ templates = Jinja2Templates(directory="templates")
 @router.get("/")
 def get_catalog(request: Request):
     # Возвращаем скомпилированный HTML шаблон
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse(request=request, name="index.html")
 ```
 
 В `main.py` необходимо подключить этот роутер:
@@ -156,7 +156,7 @@ if __name__ == "__main__":
 ```
 
 Перезагрузите страницу в браузере. Вы увидите отображение чистого HTML (пока без стилей).
-![Чистый HTML](image-11.png)
+![Чистый HTML](/assets_new_guides/image-11.png)
 
 
 ## 5. Коллекции данных (Массивы)
@@ -172,7 +172,7 @@ hotels_db = [
         "title": "Отель 'Морской бриз'",
         "price": 5000,
         "description": "Прекрасный отель на берегу моря с панорамными окнами и включенным завтраком. Отличный выбор для отдыха.",
-        "image_url": "/static/img/hotel.jpg",
+        "/assets_new_guides/image_url": "/static/img/hotel.jpg",
         "video_url": "/static/img/hotel_vid.mp4"
     },
     {
@@ -180,7 +180,7 @@ hotels_db = [
         "title": "Отель 'Горная вершина'",
         "price": 3500,
         "description": "Уютное шале в горах. Идеально подходит для любителей зимних видов спорта и активного отдыха.",
-        "image_url": "/static/img/mountains.jpg",
+        "/assets_new_guides/image_url": "/static/img/mountains.jpg",
         "video_url": "/static/img/mountains.mp4"
     },
 ]
@@ -232,7 +232,7 @@ def get_catalog(request: Request):
 ```
 
 Обновите страницу. Вы увидите списочный вывод данных из вашего Python-массива.
-![Массив](image-12.png)
+![Массив](/assets_new_guides/image-12.png)
 
 
 ## 6. Роутинг и страница «Подробнее» (формат Reels/TikTok)
@@ -289,21 +289,23 @@ def get_hotel_detail(request: Request, hotel_id: int):
 Добавим ссылки в цикл for `index.html`, чтобы карточки вели на детальную страницу:
 
 ```html
-{% for hotel in hotels %}
+<ul>
+    {% for hotel in hotels %}
     <li>
         <a href="/hotel/{{ hotel.id }}">
+            <img src="{{ hotel./assets_new_guides/image_url }}" alt="{{ hotel.title }}" class="hotel-/assets_new_guides/image">            
             <h2>{{ hotel.title }}</h2>
         </a>
         <p>Цена: {{ hotel.price }} руб.</p>
     </li>
-{% endfor %}
-
+    {% endfor %}
+</ul>
 ```
 Теперь главная страница выглядит так:
-![Новая главная](image-13.png)
+![Новая главная](/assets_new_guides/image-13.png)
 
 И появляется страница подробнее об услуге:
-![Подробнее начальная версия](image-14.png)
+![Подробнее начальная версия](/assets_new_guides/image-14.png)
 
 
 ## 7. Подключение статики (CSS)
@@ -442,7 +444,7 @@ a {
     overflow: hidden;
 }
 
-.hotel-image {
+.hotel-/assets_new_guides/image {
     width: 100%;             /* Картинка занимает всю ширину карточки */
     height: 200px;           /* Фиксированная высота */
     object-fit: cover;       /* Обрезает картинку без искажения пропорций */
@@ -452,10 +454,10 @@ a {
 ```
 
 Обновите страницу. Вы увидите аккуратную сетку карточек каталога. 
-![alt text](image-15.png)
+![alt text](/assets_new_guides/image-15.png)
 
 При клике на карточку откроется полноэкранный вертикальный блок с зацикленным видео и текстовым слоем поверх него.
-![alt text](image-16.png)
+![alt text](/assets_new_guides/image-16.png)
 
 ## 8. Развертывание Minio (Docker Compose и объектное хранилище)
 
@@ -468,8 +470,8 @@ a {
 Создайте файл `Dockerfile` для сборки нашего FastAPI:
 
 ```dockerfile
-# Используем легковесный образ Python 3.10
-FROM python:3.10-slim
+# Используем легковесный образ Python 3.11
+FROM python:3.11-slim
 
 # Устанавливаем рабочую директорию внутри контейнера
 WORKDIR /app
@@ -486,6 +488,40 @@ EXPOSE 8000
 
 # Команда для запуска FastAPI сервера
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+```
+
+### Изоляция контейнера: файл `.dockerignore`
+
+**Зачем это нужно?**
+Когда Docker собирает образ (выполняя команду `COPY . .` в вашем `Dockerfile`), он по умолчанию берет **абсолютно все** файлы из текущей папки проекта и тащит их внутрь контейнера.
+
+Поскольку мы ранее создали локальное виртуальное окружение (`my_hotel_webapp`) прямо в папке с кодом, оно тоже скопируется. Это приведет к серьезным проблемам:
+
+1. **Раздувание образа:** Виртуальное окружение с установленными библиотеками весит десятки и сотни мегабайт. Ваш Docker-образ станет неоправданно огромным и будет долго собираться.
+2. **Конфликты операционных систем:** Внутри локального `venv` лежат бинарные файлы и зависимости, скомпилированные под вашу домашнюю ОС (Windows, macOS или вашу версию Linux). Контейнер же работает на своей изолированной версии Linux. Если эти «чужие» файлы попадут внутрь, приложение может просто не запуститься.
+3. **Мусор:** Кэш байт-кода Python (`__pycache__`) принесет с собой артефакты ваших локальных запусков.
+
+**Решение:**
+Чтобы избежать этого, используется файл `.dockerignore` (он работает точно так же, как `.gitignore` для Git). Он указывает Докеру, какие папки и файлы нужно пропустить при копировании.
+
+Создайте файл с названием `.dockerignore` в корне проекта (там же, где лежит `Dockerfile`) и добавьте в него следующие исключения:
+
+```text
+# Игнорируем виртуальные окружения
+my_hotel_webapp/
+env/
+venv/
+
+# Игнорируем кэш и скомпилированные файлы Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Игнорируем файлы системы контроля версий
+.git/
+.gitignore
 
 ```
 
@@ -510,7 +546,7 @@ services:
   # Объектное хранилище Minio
   minio:
     container_name: minio_fastapi
-    image: minio/minio:latest
+    /assets_new_guides/image: minio/minio:latest
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -535,7 +571,7 @@ volumes:
     docker compose up --build -d
     ```
     Теперь наше приложение будет автоматически развернуто внутри контейнера Докера, отдельно запускать `main.py` не придется:
-    ![запущенное приложение](image-4.png)
+    ![запущенное приложение](/assets_new_guides/image-4.png)
     >**NB!** Обратите внимание: сначала надо написать весь код проекта, потом уже запускать контейнер, иначе вы не запустите сервер -- только пространство MinIO будет доступно по ранее заданному порту
 
 2. **Настройка публичного доступа через Minio Client (`mc`):**
@@ -548,7 +584,7 @@ volumes:
     ```
 
 Вид хранилища с загружеными изображениями:
-![медиа](image-3.png)
+![медиа](/assets_new_guides/image-3.png)
 
 
 ## 9. FAQ
