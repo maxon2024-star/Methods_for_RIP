@@ -50,3 +50,8 @@ volumes:
 
 ![команды](/assets_new_guides/image-2.png)
 
+
+Вид хранилища с загружеными изображениями:
+![медиа](/assets_new_guides/image-3.png)
+
+
